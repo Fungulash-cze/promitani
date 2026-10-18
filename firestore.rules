@@ -16,7 +16,7 @@ service cloud.firestore {
         && request.resource.data.selectedMovieIds is list
         && request.resource.data.selectedMovieIds.size() <= 3
         && request.resource.data.updatedAt is number;
-      allow delete: if false;
+      allow delete: if true;
     }
   }
 }

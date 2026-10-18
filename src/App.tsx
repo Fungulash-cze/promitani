@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { MOVIES, VoteRecord } from './data/movies.ts';
 import { db } from './firebase.ts';
 import {
@@ -11,11 +11,38 @@ import {
   doc,
   setDoc,
   onSnapshot,
+  getDocs,
+  writeBatch,
 } from 'firebase/firestore';
-import { Check, ExternalLink, Play, Sparkles, Sun, Moon } from 'lucide-react';
+import {
+  Check,
+  ExternalLink,
+  Play,
+  Sparkles,
+  Sun,
+  Moon,
+  X,
+  KeyRound,
+  Trash2,
+} from 'lucide-react';
 
 const STORAGE_MY_NAME = 'film_poll_voter_name_published_v1';
 const STORAGE_THEME = 'film_poll_theme_v1';
+const STORAGE_MY_VOTE_ID = 'film_poll_device_vote_id_v1';
+const ADMIN_PIN = '1234'; // Secret PIN for organizer
+
+function getOrCreateVoteId(): string {
+  try {
+    let id = localStorage.getItem(STORAGE_MY_VOTE_ID);
+    if (!id) {
+      id = `vote_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      localStorage.setItem(STORAGE_MY_VOTE_ID, id);
+    }
+    return id;
+  } catch {
+    return `vote_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  }
+}
 
 export default function App() {
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -37,6 +64,23 @@ export default function App() {
   const [justVoted, setJustVoted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Secret Admin Modal State
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminPinInput, setAdminPinInput] = useState('');
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+  const [adminError, setAdminError] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+  const clickTimerRef = useRef<number | null>(null);
+  const clickCountRef = useRef(0);
+
+  // Check URL query param ?admin=1 on mount
+  useEffect(() => {
+    if (window.location.search.includes('admin=1') || window.location.search.includes('reset=1')) {
+      setShowAdminModal(true);
+    }
+  }, []);
 
   // Persist theme & update html class
   useEffect(() => {
@@ -82,17 +126,26 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // If user already voted, pre-select their movies
+  // If user already voted on this device, pre-select their movies
   useEffect(() => {
-    if (voterName.trim()) {
-      const existing = votes.find(
-        (v) => v.voterName.toLowerCase() === voterName.trim().toLowerCase()
-      );
-      if (existing && selectedIds.length === 0) {
+    const myDocId = localStorage.getItem(STORAGE_MY_VOTE_ID);
+    const existing = myDocId ? votes.find((v) => v.id === myDocId) : null;
+    if (existing) {
+      if (selectedIds.length === 0) {
         setSelectedIds(existing.selectedMovieIds);
       }
+      if (!voterName && existing.voterName) {
+        setVoterName(existing.voterName);
+      }
+    } else if (voterName.trim()) {
+      const byName = votes.find(
+        (v) => v.voterName.toLowerCase() === voterName.trim().toLowerCase()
+      );
+      if (byName && selectedIds.length === 0) {
+        setSelectedIds(byName.selectedMovieIds);
+      }
     }
-  }, [voterName, votes]);
+  }, [votes]);
 
   const toggleMovie = (id: string) => {
     setSelectedIds((prev) =>
@@ -117,8 +170,7 @@ export default function App() {
     localStorage.setItem(STORAGE_MY_NAME, cleanName);
 
     try {
-      // Deterministic document ID per voter name so updating works seamlessly
-      const docId = `voter_${encodeURIComponent(cleanName.toLowerCase()).replace(/%/g, '_')}`;
+      const docId = getOrCreateVoteId();
       const voteRef = doc(db, 'votes', docId);
 
       await setDoc(voteRef, {
@@ -134,6 +186,62 @@ export default function App() {
       setError('Hlasování se nepodařilo odeslat. Zkus to prosím znovu.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Secret gesture: 3 clicks on the popcorn emoji opens admin prompt
+  const handlePopcornClick = () => {
+    clickCountRef.current += 1;
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+
+    if (clickCountRef.current >= 3) {
+      clickCountRef.current = 0;
+      setShowAdminModal(true);
+    } else {
+      clickTimerRef.current = window.setTimeout(() => {
+        clickCountRef.current = 0;
+      }, 1200);
+    }
+  };
+
+  const handleAdminPinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminPinInput.trim() === ADMIN_PIN) {
+      setIsAdminUnlocked(true);
+      setAdminError('');
+    } else {
+      setAdminError('Nesprávný PIN');
+    }
+  };
+
+  const handleAdminResetAllVotes = async () => {
+    if (!window.confirm('Opravdu chceš smazat všechny hlasy v databázi pro všechny?')) {
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const snap = await getDocs(collection(db, 'votes'));
+      const batch = writeBatch(db);
+      snap.forEach((d) => {
+        batch.delete(d.ref);
+      });
+      await batch.commit();
+
+      // Clear local selection
+      setSelectedIds([]);
+      setResetSuccess(true);
+      setTimeout(() => {
+        setResetSuccess(false);
+        setShowAdminModal(false);
+        setIsAdminUnlocked(false);
+        setAdminPinInput('');
+      }, 2000);
+    } catch (err) {
+      console.error('Reset error:', err);
+      setAdminError('Chyba při mazání hlasů.');
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -203,11 +311,18 @@ export default function App() {
           </div>
 
           <h1
-            className={`font-funky text-4xl sm:text-6xl font-extrabold tracking-tight uppercase leading-none transition-colors ${
+            className={`font-funky text-4xl sm:text-6xl font-extrabold tracking-tight uppercase leading-none transition-colors select-none ${
               isDark ? 'text-white drop-shadow-[0_4px_20px_rgba(255,255,255,0.15)]' : 'text-[#14141a]'
             }`}
           >
-            CO DÁME? 🍿
+            CO DÁME?{' '}
+            <span
+              onClick={handlePopcornClick}
+              className="cursor-pointer active:scale-125 inline-block transition-transform"
+              title="🍿"
+            >
+              🍿
+            </span>
           </h1>
         </header>
 
@@ -445,6 +560,98 @@ export default function App() {
           </p>
         )}
       </div>
+
+      {/* Secret Admin Modal for resetting database */}
+      {showAdminModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div
+            className={`relative w-full max-w-sm rounded-2xl p-6 border shadow-2xl transition-all ${
+              isDark
+                ? 'bg-[#12121a] border-white/20 text-white'
+                : 'bg-white border-black/15 text-[#14141a]'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setShowAdminModal(false);
+                setIsAdminUnlocked(false);
+                setAdminPinInput('');
+                setAdminError('');
+              }}
+              className="absolute top-4 right-4 p-1 rounded-lg opacity-60 hover:opacity-100 transition-opacity cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {!isAdminUnlocked ? (
+              <form onSubmit={handleAdminPinSubmit} className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-[#ccff00]" />
+                  <h3 className="font-funky text-lg font-bold">Správa ankety</h3>
+                </div>
+                <p className="text-xs opacity-60 font-mono">
+                  Zadej tajný PIN pro resetování hlasů.
+                </p>
+                <input
+                  type="password"
+                  placeholder="PIN"
+                  value={adminPinInput}
+                  onChange={(e) => {
+                    setAdminPinInput(e.target.value);
+                    if (adminError) setAdminError('');
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-sm font-mono border focus:outline-none ${
+                    isDark
+                      ? 'bg-black/50 border-white/20 text-white focus:border-[#ccff00]'
+                      : 'bg-black/5 border-black/15 text-black focus:border-black'
+                  }`}
+                  autoFocus
+                />
+                {adminError && (
+                  <p className="text-xs text-rose-500 font-mono font-bold">
+                    {adminError}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  className="w-full py-2.5 rounded-xl bg-[#ccff00] text-black font-funky font-bold text-xs uppercase tracking-wider cursor-pointer hover:bg-[#b8f000]"
+                >
+                  Odemknout
+                </button>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-rose-500">
+                  <Trash2 className="w-5 h-5" />
+                  <h3 className="font-funky text-lg font-bold">Resetovat anketu</h3>
+                </div>
+                <p className="text-xs opacity-75 leading-relaxed font-mono">
+                  Aktuálně je v databázi celkem <span className="font-bold">{votes.length}</span> hlasů.
+                  Smazáním se vynulují počítadla pro všechny návštěvníky.
+                </p>
+
+                {resetSuccess ? (
+                  <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-emerald-500 text-xs font-mono font-bold flex items-center gap-2">
+                    <Check className="w-4 h-4" />
+                    <span>Databáze byla vyresetována!</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isResetting}
+                    onClick={handleAdminResetAllVotes}
+                    className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-funky font-bold text-xs uppercase tracking-wider cursor-pointer transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isResetting ? 'Mažu hlasy...' : 'Smazat všechny hlasy'}</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

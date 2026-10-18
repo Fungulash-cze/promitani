@@ -24,6 +24,9 @@ import {
   X,
   KeyRound,
   Trash2,
+  Users,
+  Trophy,
+  Lock,
 } from 'lucide-react';
 
 const STORAGE_MY_NAME = 'film_poll_voter_name_published_v1';
@@ -64,6 +67,13 @@ export default function App() {
   const [justVoted, setJustVoted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const myDocId = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_MY_VOTE_ID) : null;
+  const hasVoted = Boolean(
+    justVoted ||
+    (myDocId && votes.some((v) => v.id === myDocId)) ||
+    (voterName.trim() && votes.some((v) => v.voterName.toLowerCase() === voterName.trim().toLowerCase()))
+  );
 
   // Secret Admin Modal State
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -463,34 +473,47 @@ export default function App() {
                       </a>
                     </div>
 
-                    {/* Live Votes Counter & Friends */}
-                    <div className="flex items-center gap-1.5 font-mono text-[11px]">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-lg font-bold transition-colors ${
-                          movieVotes.length > 0
-                            ? theme.pillBg
-                            : isDark
-                            ? 'text-white/30 bg-white/[0.03]'
-                            : 'text-black/35 bg-black/[0.04]'
-                        }`}
-                      >
-                        {movieVotes.length}{' '}
-                        {movieVotes.length === 1
-                          ? 'hlas'
-                          : movieVotes.length >= 2 && movieVotes.length <= 4
-                          ? 'hlasy'
-                          : 'hlasů'}
-                      </span>
-                      {voterNames.length > 0 && (
+                    {/* Live Votes Counter & Friends (visible after voting) */}
+                    {hasVoted ? (
+                      <div className="flex items-center gap-1.5 font-mono text-[11px]">
                         <span
-                          className={`truncate max-w-[150px] ${
-                            isDark ? 'text-white/60' : 'text-black/60'
+                          className={`px-2.5 py-0.5 rounded-lg font-bold transition-colors ${
+                            movieVotes.length > 0
+                              ? theme.pillBg
+                              : isDark
+                              ? 'text-white/30 bg-white/[0.03]'
+                              : 'text-black/35 bg-black/[0.04]'
                           }`}
                         >
-                          · {voterNames.join(', ')}
+                          {movieVotes.length}{' '}
+                          {movieVotes.length === 1
+                            ? 'hlas'
+                            : movieVotes.length >= 2 && movieVotes.length <= 4
+                            ? 'hlasy'
+                            : 'hlasů'}
                         </span>
-                      )}
-                    </div>
+                        {voterNames.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1 max-w-full">
+                            <span className="opacity-40 font-mono text-[11px]">·</span>
+                            {voterNames.map((name, i) => (
+                              <span
+                                key={i}
+                                className={`px-2 py-0.5 rounded text-[11px] font-mono font-medium ${
+                                  isDark ? 'bg-white/10 text-white/90' : 'bg-black/5 text-black/80'
+                                }`}
+                              >
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 font-mono text-[11px] opacity-40">
+                        <Lock className="w-3 h-3" />
+                        <span>odhlasuj a uvidíš výsledky wooou</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -559,6 +582,164 @@ export default function App() {
             ⚠️ {error}
           </p>
         )}
+
+
+        {/* Live Results Section: Visible only after voting */}
+        {hasVoted && votes.length > 0 && (() => {
+          const ranked = [...MOVIES].map((movie) => {
+            const movieVotes = votes.filter((v) => v.selectedMovieIds.includes(movie.id));
+            const count = movieVotes.length;
+            const percent = Math.round((count / votes.length) * 100);
+            const voters = movieVotes.map((v) => v.voterName);
+            return { movie, count, percent, voters };
+          }).sort((a, b) => b.count - a.count);
+
+          const highestScore = ranked[0]?.count || 0;
+
+          return (
+            <div
+              className={`mt-8 rounded-3xl p-5 sm:p-7 transition-all border-2 ${
+                isDark
+                  ? 'bg-gradient-to-b from-[#141420] to-[#0c0c14] border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.6)] text-white'
+                  : 'bg-gradient-to-b from-white to-[#f7faf5] border-black/15 shadow-[0_20px_50px_rgba(0,0,0,0.06)] text-[#14141a]'
+              }`}
+            >
+              {/* Scoreboard Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6 pb-4 border-b border-inherit">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold ${
+                      isDark ? 'bg-[#ccff00] text-black' : 'bg-emerald-600 text-white'
+                    }`}
+                  >
+                    <Trophy className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="font-funky text-xl sm:text-2xl font-extrabold uppercase tracking-tight leading-none">
+                      Žebříček promítání
+                    </h2>
+                    <p className="text-[11px] font-mono opacity-50 mt-0.5">
+                      Průběžné výsledky hlasování v reálném čase
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  className={`self-start sm:self-auto px-3 py-1 rounded-full text-xs font-mono font-bold tracking-wide ${
+                    isDark ? 'bg-white/10 text-[#ccff00]' : 'bg-black/5 text-emerald-800'
+                  }`}
+                >
+                  {votes.length} {votes.length === 1 ? 'hlasující' : votes.length >= 2 && votes.length <= 4 ? 'hlasující' : 'hlasujících'}
+                </div>
+              </div>
+
+              {/* 3-Column Podium Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                {ranked.map((item, idx) => {
+                  const isLeader = item.count > 0 && item.count === highestScore;
+                  const theme = isDark ? item.movie.dark : item.movie.light;
+
+                  return (
+                    <div
+                      key={item.movie.id}
+                      className={`relative rounded-2xl p-4 flex flex-col justify-between transition-all border ${
+                        isLeader
+                          ? isDark
+                            ? 'bg-[#181826] border-[#ccff00]/60 shadow-[0_0_25px_rgba(204,255,0,0.15)] ring-1 ring-[#ccff00]/30'
+                            : 'bg-white border-emerald-500/60 shadow-[0_8px_25px_rgba(16,185,129,0.12)] ring-1 ring-emerald-500/30'
+                          : isDark
+                          ? 'bg-black/35 border-white/10'
+                          : 'bg-white/70 border-black/10'
+                      }`}
+                    >
+                      {/* Podium Badge / Place */}
+                      <div className="flex items-center justify-between mb-3">
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider ${
+                            isLeader
+                              ? isDark
+                                ? 'bg-[#ccff00] text-black'
+                                : 'bg-emerald-600 text-white'
+                              : isDark
+                              ? 'bg-white/10 text-white/70'
+                              : 'bg-black/10 text-black/70'
+                          }`}
+                        >
+                          {isLeader ? '★ Favorit' : `#${idx + 1}`}
+                        </span>
+
+                        <span className="font-mono text-xs opacity-40 font-bold">
+                          {item.movie.number}
+                        </span>
+                      </div>
+
+                      {/* Title & Big Numeric Counter */}
+                      <div>
+                        <h3 className="font-funky font-bold text-sm sm:text-base leading-tight mb-3">
+                          {item.movie.title}
+                        </h3>
+
+                        <div className="flex items-baseline gap-2 mb-2 font-mono">
+                          <span className="font-funky text-3xl sm:text-4xl font-extrabold leading-none">
+                            {item.count}
+                          </span>
+                          <span className="text-xs opacity-50 font-bold">
+                            {item.count === 1 ? 'hlas' : item.count >= 2 && item.count <= 4 ? 'hlasy' : 'hlasů'}
+                          </span>
+                          <span className="ml-auto text-xs font-bold opacity-60">
+                            {item.percent} %
+                          </span>
+                        </div>
+
+                        {/* Horizontal Bar gauge */}
+                        <div className="w-full h-2 rounded-full overflow-hidden bg-black/10 dark:bg-white/10 mb-4">
+                          <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{
+                              width: `${item.percent}%`,
+                              backgroundColor: theme.accentColor,
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Stack of Voter Badges - All visible, auto-wrapping */}
+                      <div className="pt-2.5 border-t border-inherit/40 flex-1">
+                        <div className="text-[10px] font-mono uppercase tracking-wider opacity-50 mb-2 font-bold flex items-center justify-between">
+                          <span>Hlasovali ({item.voters.length}):</span>
+                        </div>
+                        {item.voters.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5 max-h-60 overflow-y-auto pr-1">
+                            {item.voters.map((voter, vIdx) => (
+                              <span
+                                key={vIdx}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-medium ${
+                                  isDark
+                                    ? 'bg-white/10 text-white border border-white/15'
+                                    : 'bg-black/5 text-black border border-black/10'
+                                }`}
+                              >
+                                <span
+                                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: theme.accentColor }}
+                                />
+                                <span>{voter}</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs font-mono opacity-30 italic">
+                            Zatím nikdo
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Secret Admin Modal for resetting database */}

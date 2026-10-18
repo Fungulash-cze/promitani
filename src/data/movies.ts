@@ -27,12 +27,12 @@ export interface VoteRecord {
 
 export const MOVIES: Movie[] = [
   {
-    id: 'posledni-expedice',
+    id: 'sang-dite-prachu',
     number: '01',
-    title: 'Poslední expedice',
-    tagline: 'Záhadné zmizení první ženy na K2 · 86 min',
-    csfdUrl: 'https://www.csfd.cz/film/1600616-posledni-expedice/prehled/',
-    trailerUrl: 'https://www.youtube.com/results?search_query=Posledn%C3%AD+expedice+trailer+Eliza+Kubarska',
+    title: 'Sang: Dítě prachu',
+    tagline: 'Hledání otce po 50 letech od války ve Vietnamu · 93 min',
+    csfdUrl: 'https://www.csfd.cz/film/1648219-sang-dite-prachu/prehled/',
+    trailerUrl: 'https://www.youtube.com/results?search_query=Sang+D%C3%ADt%C4%9B+prachu+trailer',
     light: {
       accentColor: '#0284c7',
       accentBorder: 'border-[#0284c7]',

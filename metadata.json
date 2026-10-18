@@ -1,0 +1,6 @@
+{
+  "name": "Filmový večer – Hlasování",
+  "description": "Minimalistická stylová anketa pro výběr dokumentárního filmu s ukázkami, trailery a odkazy na ČSFD.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -9,8 +9,9 @@
 
   body {
     font-family: var(--font-sans);
-    background-color: #0d0e12;
-    color: #f1f1f0;
+    background-color: #f4f6f1;
+    color: #18181f;
+    overflow-x: hidden;
   }
 }
 
@@ -23,8 +24,34 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Subtle editorial film grain overlay */
-.bg-grain {
-  background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 0);
-  background-size: 24px 24px;
+/* Funky holographic sheen & specular light */
+@keyframes sheen-slide {
+  0% {
+    transform: translateX(-150%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(250%) skewX(-20deg);
+  }
+}
+
+.animate-sheen {
+  animation: sheen-slide 4s ease-in-out infinite;
+}
+
+/* Subtle float animation for funky artifacts */
+@keyframes float-blob {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-16px) scale(1.06);
+  }
+}
+
+.animate-float-slow {
+  animation: float-blob 8s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float-blob 10s ease-in-out 3s infinite;
 }

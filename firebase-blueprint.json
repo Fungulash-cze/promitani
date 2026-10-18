@@ -1,0 +1,32 @@
+{
+  "entities": {
+    "Vote": {
+      "title": "Vote",
+      "description": "A movie poll vote cast by a friend",
+      "type": "object",
+      "properties": {
+        "voterName": {
+          "type": "string",
+          "description": "Name or nickname of the voter",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "selectedMovieIds": {
+          "type": "array",
+          "description": "List of movie IDs chosen by the voter"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Timestamp of the vote submission"
+        }
+      },
+      "required": ["voterName", "selectedMovieIds", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/votes/{voteId}": {
+      "schema": "Vote",
+      "description": "Public shared votes for the movie poll"
+    }
+  }
+}

@@ -4,10 +4,16 @@
  */
 
 import { useState, useEffect } from 'react';
-import { MOVIES, INITIAL_VOTES, VoteRecord } from './data/movies.ts';
+import { MOVIES, VoteRecord } from './data/movies.ts';
+import { db } from './firebase.ts';
+import {
+  collection,
+  doc,
+  setDoc,
+  onSnapshot,
+} from 'firebase/firestore';
 import { Check, ExternalLink, Play, Sparkles, Sun, Moon } from 'lucide-react';
 
-const STORAGE_KEY = 'film_poll_votes_published_v1';
 const STORAGE_MY_NAME = 'film_poll_voter_name_published_v1';
 const STORAGE_THEME = 'film_poll_theme_v1';
 
@@ -22,22 +28,14 @@ export default function App() {
     return false; // Default to the cheerful light mode
   });
 
-  const [votes, setVotes] = useState<VoteRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
-    return INITIAL_VOTES;
-  });
-
+  const [votes, setVotes] = useState<VoteRecord[]>([]);
   const [voterName, setVoterName] = useState(() => {
     return localStorage.getItem(STORAGE_MY_NAME) || '';
   });
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [justVoted, setJustVoted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   // Persist theme & update html class
@@ -56,14 +54,33 @@ export default function App() {
     }
   }, [isDark]);
 
-  // Persist votes
+  // Real-time synchronization of votes across all devices via Firestore
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(votes));
-    } catch {
-      // ignore
-    }
-  }, [votes]);
+    const votesCollection = collection(db, 'votes');
+    const unsubscribe = onSnapshot(
+      votesCollection,
+      (snapshot) => {
+        const fetchedVotes: VoteRecord[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data && data.voterName && Array.isArray(data.selectedMovieIds)) {
+            fetchedVotes.push({
+              id: docSnap.id,
+              voterName: data.voterName,
+              selectedMovieIds: data.selectedMovieIds,
+              timestamp: data.updatedAt || Date.now(),
+            });
+          }
+        });
+        setVotes(fetchedVotes);
+      },
+      (err) => {
+        console.error('Firestore onSnapshot error:', err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   // If user already voted, pre-select their movies
   useEffect(() => {
@@ -71,7 +88,7 @@ export default function App() {
       const existing = votes.find(
         (v) => v.voterName.toLowerCase() === voterName.trim().toLowerCase()
       );
-      if (existing) {
+      if (existing && selectedIds.length === 0) {
         setSelectedIds(existing.selectedMovieIds);
       }
     }
@@ -84,7 +101,7 @@ export default function App() {
     if (error) setError('');
   };
 
-  const handleVoteSubmit = (e: React.FormEvent) => {
+  const handleVoteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = voterName.trim();
     if (!cleanName) {
@@ -96,25 +113,28 @@ export default function App() {
       return;
     }
 
+    setIsSubmitting(true);
     localStorage.setItem(STORAGE_MY_NAME, cleanName);
 
-    setVotes((prev) => {
-      const filtered = prev.filter(
-        (v) => v.voterName.toLowerCase() !== cleanName.toLowerCase()
-      );
-      return [
-        ...filtered,
-        {
-          id: `v-${Date.now()}`,
-          voterName: cleanName,
-          selectedMovieIds: selectedIds,
-          timestamp: Date.now(),
-        },
-      ];
-    });
+    try {
+      // Deterministic document ID per voter name so updating works seamlessly
+      const docId = `voter_${encodeURIComponent(cleanName.toLowerCase()).replace(/%/g, '_')}`;
+      const voteRef = doc(db, 'votes', docId);
 
-    setJustVoted(true);
-    setTimeout(() => setJustVoted(false), 2500);
+      await setDoc(voteRef, {
+        voterName: cleanName,
+        selectedMovieIds: selectedIds,
+        updatedAt: Date.now(),
+      });
+
+      setJustVoted(true);
+      setTimeout(() => setJustVoted(false), 2500);
+    } catch (err) {
+      console.error('Error saving vote:', err);
+      setError('Hlasování se nepodařilo odeslat. Zkus to prosím znovu.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -396,7 +416,8 @@ export default function App() {
 
           <button
             type="submit"
-            className="relative px-8 py-3 bg-gradient-to-r from-[#ccff00] via-[#d4ff1a] to-[#a3ff00] hover:brightness-110 active:scale-95 text-black font-funky font-extrabold text-sm uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 shadow-[0_4px_25px_rgba(204,255,0,0.45)] hover:shadow-[0_4px_35px_rgba(204,255,0,0.6)] overflow-hidden"
+            disabled={isSubmitting}
+            className="relative px-8 py-3 bg-gradient-to-r from-[#ccff00] via-[#d4ff1a] to-[#a3ff00] hover:brightness-110 active:scale-95 text-black font-funky font-extrabold text-sm uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 shadow-[0_4px_25px_rgba(204,255,0,0.45)] hover:shadow-[0_4px_35px_rgba(204,255,0,0.6)] overflow-hidden disabled:opacity-60"
           >
             {/* Specular button glint */}
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent skew-x-[-20deg] translate-x-[-150%] hover:translate-x-[150%] transition-transform duration-700 pointer-events-none" />

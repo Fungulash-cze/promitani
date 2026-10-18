@@ -1,0 +1,22 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Public shared votes for the movie poll
+    match /votes/{voteId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.voterName is string
+        && request.resource.data.voterName.size() >= 1
+        && request.resource.data.voterName.size() <= 40
+        && request.resource.data.selectedMovieIds is list
+        && request.resource.data.selectedMovieIds.size() <= 3
+        && request.resource.data.updatedAt is number;
+      allow delete: if false;
+    }
+  }
+}
